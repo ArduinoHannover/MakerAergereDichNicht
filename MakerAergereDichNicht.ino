@@ -8,9 +8,12 @@ Lizensiert unter GNU GPL v3, eine Kopie der Lizenz liegt in LICENSE bei.
 
 Spielweise:
 Zu Beginn blinken alle LEDs im Regenbogen.
-Zum Starten eines neuen Spiels den SELECT Button druecken. (Tasten sind in der Software nicht entprellt)
+Zum Starten eines neuen Spiels den SELECT Button tippen.
+Helligkeit durch Tasten von SELECT ändern, durch Halten bestaetigen.
 Nachfolgend kann die Anzahl der Spieler gewaehlt werden (SELECT = +1, lange SELECT = bestaetigen)
-Die Farbe wird dann mit den Spielertasten gewaehlt.
+Die Farbe wird dann mit den Spielertasten gewaehlt (halten, SELECT = bestätigen).
+Computerspieler für eine Farbe aktivieren: Spielertaste tippen (Ziel blinkt), noch einmal zum deaktiviern.
+ Wieder mit SELECT bestaetigen.
 */
 
 #define SELECT_BUTTON 4
@@ -182,6 +185,7 @@ void resetGame() {
 	show();
 	selection = 0;
 
+	//Helligkeit
 	while(select()) delay(100);
 	while (true) {
 		if (select()) {
@@ -205,7 +209,8 @@ void resetGame() {
 		dice.show();
 	}
 	while(select()) delay(100);
-
+	
+	//Spielerzahl
 	diceNumber(players);
 	while (true) {
 		if (select()) {
@@ -222,11 +227,19 @@ void resetGame() {
 		}
 	}
 	
+	//Farbe
 	diceNumber(0);
 	while(select()) delay(100);
 	delay(400);
 	byte c = 0;
-	while (!select()) {
+	while (true) {
+		if (select()) {
+			uint32_t startTime = millis();
+			while (select());
+			if (startTime + 300 < millis()) {
+				break;
+			}
+		}
 		for (uint8_t player = 0; player < players; player++) {
 			if (getTouch(player)) {
 				player_wheel[player]++;
@@ -250,12 +263,28 @@ void resetGame() {
 	
 	diceNumber(0);
 	
+	//Computerspieler
+	uint32_t rerand = 0;
 	boolean touched[players];
 	autoPlay[0] = false;
 	autoPlay[1] = false;
 	autoPlay[2] = false;
 	autoPlay[3] = false;
-	while(!select()) {
+	while(true) {
+		if (select()) {
+			uint32_t startTime = millis();
+			while (select());
+			if (startTime + 300 < millis()) {
+				break;
+			}
+		}
+		//Zufaellige Pixel aufleuchten lassen
+		if (rerand < millis()) {
+			for (uint8_t i = 0; i < 7; i++) {
+				dice.setPixelColor(i, dim(player_colors[random(4)], 255*random(2)));
+			}
+			rerand = millis() + 125;
+		}
 		setDefault();
 		uint8_t s = (millis()/200)%5;
 		for (uint8_t player = 0; player < players; player++) {
@@ -278,6 +307,8 @@ void resetGame() {
 
 void loop() {
 	unsigned long delayTo;
+	
+	//Gucken, ob Spiel bereits zu Ende
 	boolean br;
 	for (uint8_t player = 0; player < players; player++) {
 		if (playerRanking[player] == 0) {
@@ -293,26 +324,32 @@ void loop() {
 			}
 		}
 	}
+	//Spiel zu Ende
 	if (wonPlayers + 1 >= players) {
+		//blackout
 		for (uint8_t px = 0; px < field.numPixels(); px++)
 			field.setPixelColor(px, 0);
 		for (uint8_t px = 0; px < finish.numPixels(); px++)
 			finish.setPixelColor(px, 0);
 		for (uint8_t px = 0; px < dice.numPixels(); px++)
 			dice.setPixelColor(px, 0);
+		//Platzierungen anzeigen
 		for (uint8_t player = 0; player < players; player++) {
 			for (uint8_t px = 40; px < 40 + (playerRanking[player]==0?players:playerRanking[player]); px++) {
 				setPixel(player, px, player_colors[player]);
 			}
 		}
 		show();
+		//Neues Spiel
 		while(!select());
 		resetGame();
 		return;
 	}
+	
 	diceNumber(0);
 	while (true) {
 		br = true;
+		//Muss der Spieler noch ziehen?
 		for (uint8_t figure = 0; figure < FIGURES; figure++) {
 			if (player_positions[activePlayer][figure] < 40) {
 				br = false;
@@ -334,7 +371,7 @@ void loop() {
 		//Wenn keine Figur mit der Augenzahl setzbar ist
 		if (nextFigure(movement) == false) {
 			delayTo = millis() + 500;
-			//Blinken
+			//Blinkeng
 			while (millis() < delayTo) {
 				blink(activePlayer);
 			}
@@ -348,7 +385,7 @@ void loop() {
 			// Computerspieler
 			boolean collides = false;
 			//Zuerst versuchen, jemanden zu schlagen
-			for (uint8_t i = 0; i < 4 && !collides; i++;) {
+			for (uint8_t i = 0; i < 4 && !collides; i++) {
 				for (uint8_t f = 0; f < FIGURES; f++) {
 					for (uint8_t p = 0; p < players; p++) {
 						for (uint8_t pf = 0; pf < FIGURES; pf++) {
@@ -387,16 +424,19 @@ void loop() {
 					if (isTouched) {
 						touchStart = millis();
 					} else {
+						//losgelassen -> naechste Figur
 						nextFigure(movement);
 					}
 				}
 				animateFigure(activePlayer, activeFigure, movement);
 			}
 		}
+		//Figur bewegen
 		moveFigure(activePlayer, activeFigure, movement);
 		if (movement != 6) {
 			break;
 		}
+		//Busy wait
 		while (getTouch(activePlayer) && !autoPlay[activePlayer]);
 	}
 	activePlayer = (activePlayer + players - 1) % players;
@@ -433,6 +473,7 @@ void setOtherPlayersBrightness(uint8_t player, uint8_t brightness) {
 	}
 }
 
+//Figuren alle auf ihre Position setzen
 void setDefault(void) {
 	for (uint8_t px = 0; px < field.numPixels(); px++) {
 		field.setPixelColor(px, 0);
@@ -447,6 +488,7 @@ void setDefault(void) {
 	}
 }
 
+//Shortcut zum Anzeigen aller Daten
 void show(void) {
 	finish.show();
 	field.show();
@@ -458,13 +500,13 @@ boolean getTouch(uint8_t player) {
 	if (players == 2 && player == 1) p++;
 	switch (p) {
 		case 0:
-			return !digitalRead(8);
+			return !digitalRead(BUTTON_P1);
 		case 1:
-			return !digitalRead(11);
+			return !digitalRead(BUTTON_P2);
 		case 2:
-			return !digitalRead(10);
+			return !digitalRead(BUTTON_P3);
 		case 3:
-			return !digitalRead(9);
+			return !digitalRead(BUTTON_P4);
 	}
 	return 0;
 }
@@ -521,6 +563,7 @@ uint8_t rollDice(boolean again) {
 	return i%6+1;
 }
 
+//Wuerfelaugen anzeigen (volle Helligkeit)
 void diceNumber(uint8_t number) {
 	diceNumber(number, 255);
 }
@@ -534,6 +577,7 @@ void diceNumber(uint8_t number, uint8_t brightness) {
 	dice.setPixelColor(5, dim(player_colors[activePlayer], brightness*((number & 2)|(number & 4))));
 	dice.show();
 }
+//Wuerfel drehen lassen
 void animateDice(void) {
 	uint8_t m = (millis()/80) % 4;
 	dice.setPixelColor(0, dim(player_colors[activePlayer], 255*(m==0)));
