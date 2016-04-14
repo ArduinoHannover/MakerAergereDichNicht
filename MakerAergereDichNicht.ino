@@ -109,10 +109,10 @@ void setup() {
 	dice.begin();
 	dice.show();
 	pinMode(SELECT_BUTTON, INPUT_PULLUP);
-	digitalWrite(8, HIGH);
-	digitalWrite(9, HIGH);
-	digitalWrite(10, HIGH);
-	digitalWrite(11, HIGH);
+	pinMode(BUTTON_P1, INPUT_PULLUP);
+	pinMode(BUTTON_P2, INPUT_PULLUP);
+	pinMode(BUTTON_P3, INPUT_PULLUP);
+	pinMode(BUTTON_P4, INPUT_PULLUP);
 	byte c = 0;
 	while (!select()) {
 		uint32_t color = dim(Wheel(c+=8), 20);
