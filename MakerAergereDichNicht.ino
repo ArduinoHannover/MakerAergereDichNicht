@@ -1,8 +1,8 @@
 /*
 MakerAergereDichNicht.ino
 Autor: Luca Zimmermann
-http://sndstrm.de/
-http://arduino-hannover.de/
+https://hannio.org/
+https://arduino-hannover.de/
 
 Lizensiert unter GNU GPL v3, eine Kopie der Lizenz liegt in LICENSE bei.
 
@@ -15,7 +15,9 @@ Die Farbe wird dann mit den Spielertasten gewaehlt (halten, SELECT = bestätigen
 Computerspieler für eine Farbe aktivieren: Spielertaste tippen (Ziel blinkt), noch einmal zum deaktiviern.
  Wieder mit SELECT bestaetigen.
 */
-
+#define VERSION2
+//#define LEDS8MM
+//#define POCKET
 #define SELECT_BUTTON 4
 /*
 Feld: Start im inneren oben rechts entgegen des Uhrzeigersinns:
@@ -80,8 +82,13 @@ Fig. 3
 
 #include <Adafruit_NeoPixel.h>
 
+#ifdef LEDS8MM
+Adafruit_NeoPixel field = Adafruit_NeoPixel(56,	FIELD_OUT, NEO_RGB + NEO_KHZ800);
+Adafruit_NeoPixel finish = Adafruit_NeoPixel(16, FINISH_OUT, NEO_RGB + NEO_KHZ800);
+#else
 Adafruit_NeoPixel field = Adafruit_NeoPixel(56,	FIELD_OUT, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel finish = Adafruit_NeoPixel(16, FINISH_OUT, NEO_GRB + NEO_KHZ800);
+#endif
 Adafruit_NeoPixel dice = Adafruit_NeoPixel(7, DICE_OUT, NEO_GRB + NEO_KHZ800);
 
 const uint8_t MAXPLAYERS = 4;
@@ -109,13 +116,20 @@ void setup() {
 	dice.begin();
 	dice.show();
 	pinMode(SELECT_BUTTON, INPUT_PULLUP);
+#ifndef VERSION2
 	pinMode(BUTTON_P1, INPUT_PULLUP);
 	pinMode(BUTTON_P2, INPUT_PULLUP);
 	pinMode(BUTTON_P3, INPUT_PULLUP);
 	pinMode(BUTTON_P4, INPUT_PULLUP);
+#endif
+	delay(1000);
 	byte c = 0;
 	while (!select()) {
 		uint32_t color = dim(Wheel(c+=8), 20);
+		for (uint8_t i = 0; i < 8; i++) {
+			dice.setPixelColor(i, color);
+		}
+		dice.show();
 		for (uint8_t i = 0; i < 5; i++) {
 			for (uint8_t j = 0; j < 4; j++) {
 				field.setPixelColor(i+14*j, color);
@@ -128,6 +142,7 @@ void setup() {
 			delay(50);
 			if (select()) break;
 		}
+#ifndef POCKET
 		if (select()) break;
 		for (uint8_t i = 0; i < 3; i++) {
 			for (uint8_t j = 0; j < 4; j++) {
@@ -148,6 +163,7 @@ void setup() {
 			delay(50);
 			if (select()) break;
 		}
+#endif
 		if (select()) break;
 		for (uint8_t i = 4; i < 5; i--) {
 			for (uint8_t j = 0; j < 4; j++) {
@@ -169,7 +185,8 @@ void setup() {
 }
 
 void resetGame() {
-	while(select()) delay(100);
+	bool waitForSelect = 1;
+	uint32_t selectCounter = 0;
 	randomSeed(millis());
 	wonPlayers = 0;
 	for (uint8_t player = 0; player < MAXPLAYERS; player++) {
@@ -184,61 +201,81 @@ void resetGame() {
 	setDefault();
 	show();
 	selection = 0;
+	selectCounter = 0;
 
 	//Helligkeit
-	while(select()) delay(100);
 	while (true) {
 		if (select()) {
-			uint32_t startTime = millis();
-			while (select());
-			if (startTime + 300 < millis()) {
-				break;
+			if (!waitForSelect) {
+				if (selectCounter == 0) {
+					selectCounter = millis();
+				} else if (millis() - selectCounter > 300) {
+					break;
+				}
 			}
-			dimmed += 5;
-			if (dimmed < MINBRIGHTNESS) //Overflow
-				dimmed = MINBRIGHTNESS;
-			for (uint8_t player = 0; player < MAXPLAYERS; player++)
-				player_colors[player] = dim(Wheel(player_wheel[player]), dimmed);
-			setDefault();
-			show();
+		} else {
+			if (selectCounter > 0) {
+				dimmed += 5;
+				if (dimmed < MINBRIGHTNESS) //Overflow
+					dimmed = MINBRIGHTNESS;
+				for (uint8_t player = 0; player < MAXPLAYERS; player++)
+					player_colors[player] = dim(Wheel(player_wheel[player]), dimmed);
+				setDefault();
+				show();
+			}
+			selectCounter = 0;
+			waitForSelect = 0;
 		}
 		int8_t b = millis()/10;
 		for (uint8_t i = 0; i < 7; i++) {
 			dice.setPixelColor(i, dim(0xFF0000, abs(b)));
 		}
-		dice.show();
+		show();
 	}
-	while(select()) delay(100);
+	waitForSelect = 1;
+	selectCounter = 0;
 	
 	//Spielerzahl
 	diceNumber(players);
 	while (true) {
 		if (select()) {
-			uint32_t startTime = millis();
-			while (select());
-			if (startTime + 300 < millis()) {
-				break;
+			if (!waitForSelect) {
+				if (selectCounter == 0) {
+					selectCounter = millis();
+				} else if (millis() - selectCounter > 300) {
+					break;
+				}
 			}
-			players++;
-			if (players > MAXPLAYERS) players = MINPLAYERS;
-			setDefault();
-			diceNumber(players);
-			show();
+		} else {
+			if (selectCounter > 0) {
+				players++;
+				if (players > MAXPLAYERS) players = MINPLAYERS;
+				setDefault();
+				diceNumber(players);
+				show();
+			}
+			selectCounter = 0;
+			waitForSelect = 0;
 		}
 	}
+	waitForSelect = 1;
+	selectCounter = 0;
 	
 	//Farbe
 	diceNumber(0);
-	while(select()) delay(100);
-	delay(400);
 	byte c = 0;
 	while (true) {
-		if (select()) {
-			uint32_t startTime = millis();
-			while (select());
-			if (startTime + 300 < millis()) {
-				break;
+		if (select() ) {
+			if (!waitForSelect) {
+				if (selectCounter == 0) {
+					selectCounter = millis();
+				} else if (millis() - selectCounter > 300) {
+					break;
+				}
 			}
+		} else {
+			waitForSelect = 0;
+			selectCounter = 0;
 		}
 		for (uint8_t player = 0; player < players; player++) {
 			if (getTouch(player)) {
@@ -258,8 +295,7 @@ void resetGame() {
 		dice.show();
 		delay(20);
 	}
-	while(select()) delay(100);
-	delay(400);
+	waitForSelect = 1;
 	
 	diceNumber(0);
 	
@@ -272,16 +308,21 @@ void resetGame() {
 	autoPlay[3] = false;
 	while(true) {
 		if (select()) {
-			uint32_t startTime = millis();
-			while (select());
-			if (startTime + 300 < millis()) {
-				break;
+			if (!waitForSelect) {
+				if (selectCounter == 0) {
+					selectCounter = millis();
+				} else if (millis() - selectCounter > 300) {
+					break;
+				}
 			}
+		} else {
+			selectCounter = 0;
+			waitForSelect = 0;
 		}
 		//Zufaellige Pixel aufleuchten lassen
 		if (rerand < millis()) {
 			for (uint8_t i = 0; i < 7; i++) {
-				dice.setPixelColor(i, dim(player_colors[random(4)], 255*random(2)));
+				dice.setPixelColor(i, dim(player_colors[random(players)], 255*random(2)));
 			}
 			rerand = millis() + 125;
 		}
@@ -371,7 +412,7 @@ void loop() {
 		//Wenn keine Figur mit der Augenzahl setzbar ist
 		if (nextFigure(movement) == false) {
 			delayTo = millis() + 500;
-			//Blinkeng
+			//Blinken
 			while (millis() < delayTo) {
 				blink(activePlayer);
 			}
@@ -499,6 +540,16 @@ boolean getTouch(uint8_t player) {
 	uint8_t p = player;
 	if (players == 2 && player == 1) p++;
 	switch (p) {
+#ifdef VERSION2
+		case 0:
+			return digitalRead(BUTTON_P1);
+		case 1:
+			return digitalRead(BUTTON_P2);
+		case 2:
+			return digitalRead(BUTTON_P3);
+		case 3:
+			return digitalRead(BUTTON_P4);
+#else
 		case 0:
 			return !digitalRead(BUTTON_P1);
 		case 1:
@@ -507,6 +558,7 @@ boolean getTouch(uint8_t player) {
 			return !digitalRead(BUTTON_P3);
 		case 3:
 			return !digitalRead(BUTTON_P4);
+#endif
 	}
 	return 0;
 }
